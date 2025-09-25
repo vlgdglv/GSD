@@ -1140,8 +1140,8 @@ def renew_sampler(model_class):
 
             if self.prefix_token_sampler_scheme == 'speculative_jacobi':
 
-                if hasattr(self, 'SpecSamplerClass') :
-                    SpeculativeSampler = self.SpecSamplerClass
+                #if hasattr(self, 'SpecSamplerClass') :
+                #    SpeculativeSampler = self.SpecSamplerClass
                     
                 prefix_token_sampler = SpeculativeSampler(
                     generator=self.generator,
