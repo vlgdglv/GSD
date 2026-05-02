@@ -40,8 +40,11 @@ cache_dir = PATH
 # target_size = 512
 
 model_path = "Alpha-VLLM/Lumina-mGPT-7B-768"
-target_size = 768
-target_size_h, target_size_w = 768, 768
+model_path = "/home/vlgd/Models/Lumina-mGPT-7B-768-bnb-int4"
+target_size = 16
+target_size_h, target_size_w = 16, 16
+# target_size = 768
+# target_size_h, target_size_w = 768, 768
 
 # model_path = "Alpha-VLLM/Lumina-mGPT-7B-1024"
 # target_size = 1024
@@ -54,7 +57,7 @@ device = "cuda:0"
 # ******************** Image Generation ********************
 inference_solver = FlexARInferenceSolver(
     model_path=model_path,
-    precision="bf16",
+    precision="int4",
     target_size=target_size,
     cache_dir=cache_dir,
     device = device,

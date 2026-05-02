@@ -1,8 +1,16 @@
 import argparse
 import os
 import sys
+import gc
+from PIL import Image
+import torch
+import time
 
-import os
+from datetime import datetime
+import random
+import numpy as np
+
+
 PATH = '/SSD'
 os.environ['TRANSFORMERS_CACHE'] = PATH
 os.environ['HF_HOME'] = PATH
@@ -12,15 +20,7 @@ sys.path.append("./lumina_mgpt/")
 sys.path.append("./")
 print(sys.path)
 
-import gc
 
-from lumina_mgpt.inference_solver import FlexARInferenceSolver
-from PIL import Image
-import torch
-import time
-
-import random
-import numpy as np
 
 def set_seed(seed: int):
     """
@@ -56,6 +56,7 @@ target_size_h, target_size_w = 768, 768
 device = "cuda:0"
 
 # ******************** Image Generation ********************
+from lumina_mgpt.inference_solver import FlexARInferenceSolver
 inference_solver = FlexARInferenceSolver(
     model_path=model_path,
     # precision="bf16",
@@ -106,72 +107,68 @@ q_image_content_conditions = [ # Realistic, HumanFAce, Anime, GSD
 ]
 
 
+if __name__ == "__main__":
+    template_condition_sentences = [
+        f"Generate an image of {target_size_w}x{target_size_h} according to the following prompt:\n",
+    ] * len(q_image_content_conditions)
 
-template_condition_sentences = [
-    f"Generate an image of {target_size_w}x{target_size_h} according to the following prompt:\n",
-] * len(q_image_content_conditions)
-
-from scheduler.jacobi_iteration_lumina_mgpt_sjd import renew_pipeline_sampler
-print(inference_solver.__class__)
-inference_solver = renew_pipeline_sampler(
-    inference_solver,
-    jacobi_loop_interval_l = 3,
-    jacobi_loop_interval_r = (target_size // 16)**2 + target_size // 16 - 10,
-    max_num_new_tokens = max_num_new_tokens,
-    guidance_scale = guidance_scale,
-    seed = seeds[0],
-    multi_token_init_scheme = multi_token_init_scheme,
-    do_cfg=  True,
-    image_top_k=image_top_k, 
-    text_top_k=text_top_k,
-    prefix_token_sampler_scheme = prefix_token_sampler_scheme,
-)
-
-import os
-from datetime import datetime
-
-# Get the current time in the desired format
-current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
-
-# Define the folder name
-folder_name = f"{current_time}"
-
-os.makedirs(f"./SJD/"+folder_name)
-for seed in seeds:
-    inference_solver.model.seed = seed
-    for i, q_image_content_condition in enumerate(q_image_content_conditions):
-        q1 = template_condition_sentences[i] + q_image_content_condition
-
-        output_file_name = model_path.split("/")[-1] + "-" + q_image_content_condition[:30] + '-' + str(max_num_new_tokens) + '-init-' + multi_token_init_scheme[:6] + '-seed' + str(seed) + '-img_topk' + str(image_top_k) + ".png"
-
-        time_start = time.time()
-        t1 = torch.cuda.Event(enable_timing=True)
-        t2 = torch.cuda.Event(enable_timing=True)
-        torch.cuda.synchronize()
-        t1.record()
-
-        generated = inference_solver.generate(
-            images=[],
-            qas=[[q1, None]],
-            max_gen_len=8192,
-            temperature=1.0,
-            logits_processor=inference_solver.create_logits_processor(cfg=guidance_scale, image_top_k=image_top_k),
-        )
-        t2.record()
-        torch.cuda.synchronize()
-
-        t = t1.elapsed_time(t2) / 1000
-        time_end = time.time()
-        print("Time elapsed: ", t, time_end - time_start)
-
-        a1, new_image = generated[0], generated[1][0]
-        result_image = inference_solver.create_image_grid([new_image], 1, 1)
+    from scheduler.row_parallel_lumina_mgpt_sjd import renew_pipeline_sampler
+    print(inference_solver.__class__)
+    inference_solver = renew_pipeline_sampler(
+        inference_solver,
+        jacobi_loop_interval_l = 3,
+        jacobi_loop_interval_r = (target_size // 16)**2 + target_size // 16 - 10,
+        max_num_new_tokens = max_num_new_tokens,
+        guidance_scale = guidance_scale,
+        seed = seeds[0],
+        multi_token_init_scheme = multi_token_init_scheme,
+        do_cfg=  True,
+        image_top_k=image_top_k, 
+        text_top_k=text_top_k,
+        prefix_token_sampler_scheme = prefix_token_sampler_scheme,
+    )
 
 
+    # Get the current time in the desired format
+    current_time = datetime.now().strftime('%Y-%m-%d_%H-%M')
 
-        result_image.save(f"./SJD/{folder_name}/" + output_file_name)
-        print(a1, 'saved', output_file_name) # <|image|>
+    # Define the folder name
+    folder_name = f"{current_time}"
+
+    os.makedirs(f"./Row_Parrallel/"+folder_name, exist_ok=True)
+    for seed in seeds:
+        inference_solver.model.seed = seed
+        for i, q_image_content_condition in enumerate(q_image_content_conditions):
+            q1 = template_condition_sentences[i] + q_image_content_condition
+
+            output_file_name = model_path.split("/")[-1] + "-" + q_image_content_condition[:30] + '-' + str(max_num_new_tokens) + '-init-' + multi_token_init_scheme[:6] + '-seed' + str(seed) + '-img_topk' + str(image_top_k) + ".png"
+
+            time_start = time.time()
+            t1 = torch.cuda.Event(enable_timing=True)
+            t2 = torch.cuda.Event(enable_timing=True)
+            torch.cuda.synchronize()
+            t1.record()
+
+            generated = inference_solver.generate(
+                images=[],
+                qas=[[q1, None]],
+                max_gen_len=8192,
+                temperature=1.0,
+                logits_processor=inference_solver.create_logits_processor(cfg=guidance_scale, image_top_k=image_top_k),
+            )
+            t2.record()
+            torch.cuda.synchronize()
+
+            t = t1.elapsed_time(t2) / 1000
+            time_end = time.time()
+            print("Time elapsed: ", t, time_end - time_start)
+
+            a1, new_image = generated[0], generated[1][0]
+            result_image = inference_solver.create_image_grid([new_image], 1, 1)
+
+            result_image.save(f"./Row_Parrallel/{folder_name}/" + output_file_name)
+            print(a1, 'saved', output_file_name) # <|image|>
 
 
-del inference_solver
-gc.collect()
+    del inference_solver
+    gc.collect()

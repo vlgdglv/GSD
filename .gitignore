@@ -1,0 +1,20 @@
+# Generated output directories
+GSD/
+Row_Parrallel/
+SJD/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# VS Code
+.vscode/
+
+# Checkpoints / model weights
+ckpts/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors

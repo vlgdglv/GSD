@@ -8,6 +8,7 @@ import torch
 import transformers
 from transformers import GenerationConfig, TextStreamer
 from transformers.generation.logits_process import LogitsProcessor, LogitsProcessorList, LogitsWarper
+from transformers import BitsAndBytesConfig
 
 from data.item_processor import FlexARItemProcessor
 from model.chameleon import ChameleonForConditionalGeneration
@@ -279,15 +280,38 @@ class FlexARInferenceSolver:
         return parser
 
     def __init__(self, model_path, precision, target_size=512, cache_dir=None, device="cpu"):
-        self.dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[precision]
+
+        if precision == "int4":
+            self.dtype = None
+            self.quant_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch.float16
+            )
+            self.device_map = "auto" if device in ("auto", "cuda") else device
+        else: 
+            _map = {"bf16": torch.float16, "fp16": torch.float16, "fp32": torch.float32}
+            self.dtype = _map[precision]
+            self.quant_config = None
+            self.device_map = device
+
 
         self.device = device
 
         self.model = ChameleonForConditionalGeneration.from_pretrained(
-            model_path, torch_dtype=self.dtype, device_map=device, cache_dir=cache_dir,
+            model_path, 
+            torch_dtype=self.dtype, 
+            device_map=device, 
+            cache_dir=cache_dir,
+            max_memory={"cuda:0": "9.2GiB", "cpu": "24GiB"},
+            quantization_config=self.quant_config,
         )
         self.item_processor = FlexARItemProcessor(
-            with_decoder=True, target_size=target_size, device=device,
+            tokenizer=model_path,
+            with_decoder=True, 
+            target_size=target_size, 
+            device=device,
         )
 
     def get_streamer(self):
@@ -352,8 +376,10 @@ class FlexARInferenceSolver:
             if len(generation_result) > 0 and generation_result[-1] == 8710:
                 generation_result = generation_result[:-1]
         
-        return self.decode_ids(generation_result)
-
+        # self.model.to("cpu")
+        out = self.decode_ids(generation_result)
+        # self.model.to(self.device)
+        return out
 
     def decode_ids(self, tokens: List[int]):
         generated_images = []
